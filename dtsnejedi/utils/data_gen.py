@@ -1,6 +1,6 @@
 from scipy.stats import ortho_group
 import numpy as np
-def get_gaussian_data(dims=2, n_clusters=5):
+def get_gaussian_data(dims=2, n_clusters=5, max_points=200):
     X = []
     y = []
 
@@ -9,7 +9,7 @@ def get_gaussian_data(dims=2, n_clusters=5):
         diag = np.abs(np.diag(40 * np.random.rand(dims)))
         O = ortho_group.rvs(dims)
         covs = O.T @ diag @ O
-        num_samples = np.random.randint(10, 200)
+        num_samples = np.random.randint(10, max_points)
 
         cloud = np.random.multivariate_normal(means, covs, num_samples)
 
@@ -18,7 +18,7 @@ def get_gaussian_data(dims=2, n_clusters=5):
 
     return np.concatenate(X), np.concatenate(y)
 
-def get_gaussian_data_jedi(dims=2, n_clusters=5):
+def get_gaussian_data_jedi(dims=2, n_clusters=5, max_points=300):
     X = []
     y = []
     cluster_size = []
@@ -29,7 +29,7 @@ def get_gaussian_data_jedi(dims=2, n_clusters=5):
         diag = np.abs(np.diag(40 * np.random.rand(dims)))
         O = ortho_group.rvs(dims)
         covs = O.T @ diag @ O
-        num_samples = np.random.randint(100,300)
+        num_samples = np.random.randint(100, max_points)
 
         cloud = np.random.multivariate_normal(means, covs, num_samples)
 
