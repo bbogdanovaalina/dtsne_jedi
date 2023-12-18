@@ -1,7 +1,9 @@
 from tqdm import tqdm
-from utils_cp import Hbeta_cp, pca_cp
+from ..utils.utils_cp import Hbeta_cp, pca_cp
 import matplotlib.pyplot as plt
 import cupy as cp
+from multiprocessing import Pool
+from functools import partial
 
 
 def BetaDens_cp(D=cp.array([]), beta=cp.array([]), i=None):
@@ -22,7 +24,45 @@ def BetaDens_cp(D=cp.array([]), beta=cp.array([]), i=None):
     return P, gamma[cp.concatenate((cp.r_[0:i], cp.r_[i+1:n+1])),0]
 
 
-def x2p_cp(X=cp.array([]), tol=1e-5, perplexity=30.0, dens=False):
+
+def pairwise_dist(i, D=None, logU=None, tol=None, n=None):
+    # Compute the Gaussian kernel and entropy for the current precision
+    print('Pdist for one point')
+    betamin = -cp.inf
+    betamax = cp.inf
+    beta_i = 1
+
+    concated = cp.concatenate((cp.arange(0, i), cp.arange(i+1, n)))
+    Di = D[i, concated]
+    (H, thisP) = Hbeta_cp(Di, beta_i)
+    # Evaluate whether the perplexity is within tolerance
+    Hdiff = H - logU
+    tries = 0
+    while cp.abs(Hdiff) > tol and tries < 50:
+
+        # If not, increase or decrease precision
+        if Hdiff > 0:
+            betamin = beta_i.copy()
+            if betamax == cp.inf or betamax == -cp.inf:
+                beta_i = beta_i * 2.
+            else:
+                beta_i = (beta_i + betamax) / 2.
+        else:
+            betamax = beta_i.copy()
+            if betamin == cp.inf or betamin == -cp.inf:
+                beta_i = beta_i / 2.
+            else:
+                beta_i = (beta_i + betamin) / 2.
+
+        # Recompute the values
+        (H, thisP) = Hbeta_cp(Di, beta_i)
+        Hdiff = H - logU
+        tries += 1
+    print('Dist for one point calced')
+    return thisP, beta_i, i
+
+
+def x2p_cp(X=cp.array([]), tol=1e-5, perplexity=30.0, dens=False, num_processes=2):
     """
         Performs a binary search to get P-values in such a way that each
         conditional Gaussian has the same perplexity.
@@ -38,42 +78,19 @@ def x2p_cp(X=cp.array([]), tol=1e-5, perplexity=30.0, dens=False):
     beta = cp.ones((n, 1))
     logU = cp.log(perplexity)
 
+
+
     # Loop over all datapoints
-    for i in tqdm(range(n)):
+    indices = cp.arange(n)
+    calc_fn = partial(pairwise_dist, D=D, logU=logU, tol=tol, n=n)
+    print('Start calculating pairwise dists')
+    with Pool(num_processes) as p:
+        P = list(tqdm(p.imap(calc_fn, indices), total=len(indices)))
+    print('Finish calcs')
 
-        # Compute the Gaussian kernel and entropy for the current precision
-        betamin = -cp.inf
-        betamax = cp.inf
-        # concated = cp.concatenate((cp.r_[0:i], cp.r_[i+1:n]))
-        concated = cp.concatenate((cp.arange(0, i), cp.arange(i+1, n)))
-        Di = D[i, concated]
-        (H, thisP) = Hbeta_cp(Di, beta[i])
-        # Evaluate whether the perplexity is within tolerance
-        Hdiff = H - logU
-        tries = 0
-        while cp.abs(Hdiff) > tol and tries < 50:
-
-            # If not, increase or decrease precision
-            if Hdiff > 0:
-                betamin = beta[i].copy()
-                if betamax == cp.inf or betamax == -cp.inf:
-                    beta[i] = beta[i] * 2.
-                else:
-                    beta[i] = (beta[i] + betamax) / 2.
-            else:
-                betamax = beta[i].copy()
-                if betamin == cp.inf or betamin == -cp.inf:
-                    beta[i] = beta[i] / 2.
-                else:
-                    beta[i] = (beta[i] + betamin) / 2.
-
-            # Recompute the values
-            (H, thisP) = Hbeta_cp(Di, beta[i])
-            Hdiff = H - logU
-            tries += 1
-
-        # Set the final row of P
-        P[i, cp.concatenate((cp.arange(0, i), cp.arange(i+1, n)))] = thisP
+    # for i in tqdm(range(n)):
+    #     thisP, beta[i], i = pairwise_dist(i, D, logU, tol, n, )
+        # P[i, cp.concatenate((cp.arange(0, i), cp.arange(i+1, n)))] = thisP
     if dens:
         for i in range(n):
             Di = D[i, cp.concatenate((cp.arange(0, i), cp.arange(i+1, n)))]

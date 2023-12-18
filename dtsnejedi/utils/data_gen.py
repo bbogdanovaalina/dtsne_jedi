@@ -1,3 +1,4 @@
+import scipy
 from scipy.stats import ortho_group
 import numpy as np
 def get_gaussian_data(dims=2, n_clusters=5, max_points=200):
